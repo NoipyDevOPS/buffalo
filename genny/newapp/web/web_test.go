@@ -6,7 +6,7 @@ import (
 
 	"github.com/gobuffalo/buffalo/genny/newapp/core"
 	"github.com/gobuffalo/envy"
-	"github.com/gobuffalo/genny/gentest"
+	"github.com/gobuffalo/genny/v2/gentest"
 	"github.com/gobuffalo/meta"
 	"github.com/stretchr/testify/require"
 )
@@ -19,8 +19,10 @@ func init() {
 func Test_New(t *testing.T) {
 	r := require.New(t)
 
-	app := meta.New(".")
-	app.WithModules = false
+	app := meta.Named("web", ".")
+	(&app).PackageRoot("web")
+	app.WithModules = true
+	envy.Set(envy.GO111MODULE, "on")
 
 	gg, err := New(&Options{
 		Options: &core.Options{
@@ -36,8 +38,8 @@ func Test_New(t *testing.T) {
 
 	res := run.Results()
 
-	cmds := []string{"go get github.com/gobuffalo/buffalo-plugins",
-		"go get -t ./...",
+	cmds := []string{
+		"go mod init web",
 	}
 	r.Len(res.Commands, len(cmds))
 
@@ -87,7 +89,7 @@ var commonExpected = []string{
 	"README.md",
 	"locales/all.en-us.yaml",
 	"public/robots.txt",
-	"templates/_flash.html",
-	"templates/application.html",
-	"templates/index.html",
+	"templates/_flash.plush.html",
+	"templates/application.plush.html",
+	"templates/index.plush.html",
 }

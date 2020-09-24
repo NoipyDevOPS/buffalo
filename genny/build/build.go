@@ -6,11 +6,11 @@ import (
 	"github.com/gobuffalo/buffalo/runtime"
 
 	"github.com/gobuffalo/events"
-	"github.com/gobuffalo/genny"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/plushgen"
 	"github.com/gobuffalo/packr/v2"
 	"github.com/gobuffalo/packr/v2/jam"
-	"github.com/gobuffalo/plush"
-	"github.com/gobuffalo/plushgen"
+	"github.com/gobuffalo/plush/v4"
 )
 
 // New generator for building a Buffalo application
@@ -41,7 +41,7 @@ func New(opts *Options) (*genny.Generator, error) {
 	g.RunFn(transformMain(opts))
 
 	// add any necessary templates for the build
-	box := packr.New("github.com/gobuffalo/buffalo/genny/build", "../build/templates")
+	box := packr.New("github.com/gobuffalo/buffalo@v0.15.6/genny/build", "../build/templates")
 	if err := g.Box(box); err != nil {
 		return g, err
 	}
@@ -70,12 +70,14 @@ func New(opts *Options) (*genny.Generator, error) {
 		g.Merge(ag)
 	}
 
-	// mount the build time dependency generator
-	dg, err := buildDeps(opts)
-	if err != nil {
-		return g, err
+	if opts.WithBuildDeps {
+		// mount the build time dependency generator
+		dg, err := buildDeps(opts)
+		if err != nil {
+			return g, err
+		}
+		g.Merge(dg)
 	}
-	g.Merge(dg)
 
 	g.RunFn(func(r *genny.Runner) error {
 		return jam.Pack(jam.PackOptions{})

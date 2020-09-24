@@ -1,35 +1,22 @@
 package render
 
 import (
-	"os"
-	"path/filepath"
-
-	"github.com/gobuffalo/packr/v2"
+	"github.com/gobuffalo/packd"
 )
 
-func withHTMLFile(name string, contents string, fn func(*Engine)) error {
-	tmpDir := filepath.Join(os.TempDir(), filepath.Dir(name))
-	err := os.MkdirAll(tmpDir, 0766)
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpDir)
-
-	tmpFile, err := os.Create(filepath.Join(tmpDir, filepath.Base(name)))
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmpFile.Name())
-
-	_, err = tmpFile.Write([]byte(contents))
-	if err != nil {
-		return err
-	}
-
-	e := New(Options{
-		TemplatesBox: packr.New(os.TempDir(), os.TempDir()),
-	})
-
-	fn(e)
-	return nil
+type Widget struct {
+	Name string
 }
+
+func (w Widget) ToPath() string {
+	return w.Name
+}
+
+func NewEngine() *Engine {
+	return New(Options{
+		TemplatesBox: packd.NewMemoryBox(),
+		AssetsBox:    packd.NewMemoryBox(),
+	})
+}
+
+type rendFriend func(string, RendererFunc) Renderer

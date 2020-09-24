@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -34,7 +33,7 @@ var RootCmd = &cobra.Command{
 		}
 
 		if !insideBuffaloProject() {
-			return errors.New("you need to be inside your buffalo project path to run this command")
+			return fmt.Errorf("you need to be inside your buffalo project path to run this command")
 		}
 
 		return nil
@@ -68,7 +67,6 @@ Buffalo Plugins Installation*:
 
 	$ buffalo plugins install github.com/gobuffalo/buffalo-pop
 
-* Requires https://github.com/gobuffalo/buffalo-plugins installed.
 `
 
 func init() {

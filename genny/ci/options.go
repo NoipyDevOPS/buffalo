@@ -1,18 +1,17 @@
 package ci
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/gobuffalo/buffalo/runtime"
 
 	"github.com/gobuffalo/meta"
-	"github.com/gobuffalo/pop"
+	"github.com/gobuffalo/pop/v5"
 )
 
 // Available CI implementations
-var Available = []string{"travis", "gitlab"}
+var Available = []string{"travis", "gitlab", "circleci"}
 
 // Options for CI
 type Options struct {
@@ -33,7 +32,7 @@ func (opts *Options) Validate() error {
 	}
 
 	if len(opts.Provider) == 0 {
-		return errors.New("no provider chosen")
+		return fmt.Errorf("no provider chosen")
 	}
 	opts.Provider = strings.ToLower(opts.Provider)
 

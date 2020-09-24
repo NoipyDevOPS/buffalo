@@ -4,8 +4,10 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/gobuffalo/plush"
-	"github.com/gobuffalo/tags"
+	"github.com/gobuffalo/helpers/forms"
+	"github.com/gobuffalo/helpers/forms/bootstrap"
+	"github.com/gobuffalo/plush/v4"
+	"github.com/gobuffalo/tags/v3"
 )
 
 func init() {
@@ -21,4 +23,6 @@ func init() {
 		}
 		return t.HTML(), nil
 	})
+	plush.Helpers.Add(forms.RemoteFormKey, bootstrap.RemoteForm)
+	plush.Helpers.Add(forms.RemoteFormForKey, bootstrap.RemoteFormFor)
 }

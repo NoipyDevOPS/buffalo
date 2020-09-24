@@ -1,12 +1,14 @@
 package actions
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/genny/gentest"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gentest"
 	packr "github.com/gobuffalo/packr/v2"
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +17,13 @@ func compare(a, b string) bool {
 	a = strings.Replace(a, "\r", "", -1)
 	b = strings.TrimSpace(b)
 	b = strings.Replace(b, "\r", "", -1)
-	return a == b
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	res := cmp.Equal(a, b)
+	if !res {
+		fmt.Println(cmp.Diff(a, b))
+	}
+	return res
 }
 
 func runner() *genny.Runner {
@@ -45,13 +53,14 @@ func Test_New(t *testing.T) {
 
 	box := packr.New("genny/actions/Test_New", "../actions/_fixtures/outputs/clean")
 
-	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/index.html"}
+	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/index.plush.html"}
 
 	for _, s := range files {
 		x, err := box.FindString(s)
 		r.NoError(err)
 		f, err := res.Find(strings.TrimSuffix(s, ".tmpl"))
 		r.NoError(err)
+		fmt.Printf("\nfile %s", s)
 		r.True(compare(x, f.String()))
 	}
 }
@@ -77,13 +86,14 @@ func Test_New_Multi(t *testing.T) {
 
 	box := packr.New("genny/actions/Test_New_Multi", "../actions/_fixtures/outputs/multi")
 
-	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/show.html", "templates/user/edit.html"}
+	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/show.plush.html", "templates/user/edit.plush.html"}
 
 	for _, s := range files {
 		x, err := box.FindString(s)
 		r.NoError(err)
 		f, err := res.Find(strings.TrimSuffix(s, ".tmpl"))
 		r.NoError(err)
+		fmt.Printf("\nfile %s", f)
 		r.True(compare(x, f.String()))
 	}
 }
@@ -116,7 +126,7 @@ func Test_New_Multi_Existing(t *testing.T) {
 
 	box := packr.New("genny/actions/Test_New_Multi_Existing", "../actions/_fixtures/outputs/existing")
 
-	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/show.html", "templates/user/edit.html"}
+	files := []string{"actions/user.go.tmpl", "actions/app.go.tmpl", "actions/user_test.go.tmpl", "templates/user/show.plush.html", "templates/user/edit.plush.html"}
 
 	for _, s := range files {
 		x, err := box.FindString(s)

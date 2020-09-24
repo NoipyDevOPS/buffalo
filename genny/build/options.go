@@ -18,8 +18,9 @@ type Options struct {
 	// b) to time.RFC3339 of BuildTime
 	BuildVersion string `json:"build_version,omitempty"`
 	// CleanAssets will remove the public/assets folder build compiling
-	CleanAssets bool `json:"clean_assets"`
-	WithAssets  bool `json:"with_assets,omitempty"`
+	CleanAssets   bool `json:"clean_assets"`
+	WithAssets    bool `json:"with_assets,omitempty"`
+	WithBuildDeps bool `json:"with_build_deps,omitempty"`
 	// places ./public/assets into ./bin/assets.zip.
 	// requires WithAssets = true
 	ExtractAssets bool `json:"extract_assets,omitempty"`
@@ -43,6 +44,7 @@ type Options struct {
 	// GoCommand is the `go X` command to be used. Default is "build".
 	GoCommand string `json:"go_command"`
 	rollback  *sync.Map
+	keep      *sync.Map
 }
 
 // Validate that options are usuable
@@ -62,6 +64,9 @@ func (opts *Options) Validate() error {
 	}
 	if opts.rollback == nil {
 		opts.rollback = &sync.Map{}
+	}
+	if opts.keep == nil {
+		opts.keep = &sync.Map{}
 	}
 	if len(opts.GoCommand) == 0 {
 		opts.GoCommand = "build"

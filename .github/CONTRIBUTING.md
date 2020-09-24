@@ -4,15 +4,7 @@ First, thank you so much for wanting to contribute! It means so much that you ca
 
 ## First time committing to a Go Repo?
 
-Contributing to a Go project for the first time can be confusing due to import statements requiring a very specific path on disk. You can use the following two approaches to contribute.
-
-### 1. Using Go Path
-If you are using your Go Path for development, please take a moment and read this fantastic post on how to easily work with Go repos.
-
-[https://splice.com/blog/contributing-open-source-git-repositories-go/](https://splice.com/blog/contributing-open-source-git-repositories-go/)
-
-### 2. Using Go Modules
-Support for Go Modules were introduced in [Release v0.13.0-beta.1](https://github.com/gobuffalo/buffalo/releases/tag/v0.13.0-beta.1), and you can now use them to easily set up a development environment. The steps involve:
+Support for Go Modules was introduced in [Release v0.13.0-beta.1](https://github.com/gobuffalo/buffalo/releases/tag/v0.13.0-beta.1), and you can now use them to easily set up a development environment. The steps involve:
 
 1. Fork the repo
 2. Clone the repo to any location in your work station
@@ -28,9 +20,13 @@ Support for Go Modules were introduced in [Release v0.13.0-beta.1](https://githu
 4. Make sure tests run when doing `go test ./...`. You may need to do `go get -t ./...` first to get the testing dependencies.
 5. (Optional) There is a much longer set of integration tests that can be run. These will be run by Travis-CI when you open a PR. If you want to run them locally, you can by running `docker build .`.
 
+Feel free to ask for help, but don't target a specific person (unless you're replying to this person). e.g. don't @ markbates, but @ gobuffalo/core-managers instead.
+
 ### Making your Pull Request
 
-Open a PR against the `development` branch. **_DO NOT_** open one against `master` unless you are explicitly told to. All "unreleased" work happens in the `development` branch.
+Open a PR against the `development` branch. **_DO NOT_** open one against `master`. All "unreleased" work happens in the `development` branch, and we will fix the master branch if necessary.
+
+**WE WILL CLOSE ANY PR OPENED AGAINST MASTER BRANCH**.
 
 ## Documentation Welcome
 
@@ -42,4 +38,4 @@ You can submit PRs to change the website and/or docs on [https://github.com/gobu
 
 ## Thank You
 
-Once again, we want to take the chance to say thank you again for wanting to contribute to Buffalo. This is a community project, and that means we **need** your help! Thank you so much.
+Once again, we want to take the chance to say thank you for wanting to contribute to Buffalo. This is a community project, and that means we **need** your help! Thank you so much.

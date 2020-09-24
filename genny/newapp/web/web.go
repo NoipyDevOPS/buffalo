@@ -6,8 +6,8 @@ import (
 	"github.com/gobuffalo/buffalo/genny/assets/standard"
 	"github.com/gobuffalo/buffalo/genny/assets/webpack"
 	"github.com/gobuffalo/buffalo/genny/newapp/core"
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/gogen"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gogen"
 	"github.com/gobuffalo/packr/v2"
 )
 
@@ -32,7 +32,7 @@ func New(opts *Options) (*genny.Group, error) {
 
 	t := gogen.TemplateTransformer(data, helpers)
 	g.Transformer(t)
-	g.Box(packr.New("buffalo:genny:newapp:web", "../web/templates"))
+	g.Box(packr.New("github.com/gobuffalo/buffalo:genny/newapp/web", "../web/templates"))
 
 	gg.Add(g)
 

@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gobuffalo/buffalo-docker/genny/docker"
-	"github.com/gobuffalo/buffalo-pop/genny/newapp"
+	"github.com/gobuffalo/buffalo-pop/v2/genny/newapp"
 	"github.com/gobuffalo/buffalo/genny/ci"
+	"github.com/gobuffalo/buffalo/genny/docker"
 	"github.com/gobuffalo/buffalo/genny/refresh"
 	"github.com/gobuffalo/buffalo/genny/vcs"
 	"github.com/gobuffalo/buffalo/runtime"
@@ -37,12 +37,10 @@ func (opts *Options) Validate() error {
 	}
 
 	if opts.Pop != nil {
-		if opts.Pop.App.IsZero() {
-			opts.Pop.App = opts.App
-		}
 		if err := opts.Pop.Validate(); err != nil {
 			return err
 		}
+		opts.Pop.Root = opts.App.Root
 	}
 
 	if opts.CI != nil {
@@ -72,13 +70,8 @@ func (opts *Options) Validate() error {
 		}
 	}
 
-	if opts.App.WithModules && opts.App.WithDep {
-		return ErrGoModulesWithDep
-	}
-
 	name := strings.ToLower(opts.App.Name.String())
-	fb := append(opts.ForbiddenNames, "buffalo", "test", "dev")
-	for _, n := range fb {
+	for _, n := range opts.ForbiddenNames {
 		rx, err := regexp.Compile(n)
 		if err != nil {
 			return err
@@ -88,9 +81,19 @@ func (opts *Options) Validate() error {
 		}
 	}
 
+	keywords := []string{"buffalo", "test", "dev"}
+	for _, kw := range keywords {
+		if name != kw {
+			continue
+		}
+
+		return fmt.Errorf("name %s is not allowed, try a different application name", opts.App.Name)
+	}
+
 	if !nameRX.MatchString(name) {
 		return fmt.Errorf("name %s is not allowed, application name can only contain [a-Z0-9-_]", opts.App.Name)
 	}
+
 	return nil
 }
 

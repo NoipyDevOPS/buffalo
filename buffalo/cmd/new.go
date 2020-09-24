@@ -9,25 +9,25 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gobuffalo/buffalo-docker/genny/docker"
-	pop "github.com/gobuffalo/buffalo-pop/genny/newapp"
+	pop "github.com/gobuffalo/buffalo-pop/v2/genny/newapp"
 	"github.com/gobuffalo/buffalo/genny/assets/standard"
 	"github.com/gobuffalo/buffalo/genny/assets/webpack"
 	"github.com/gobuffalo/buffalo/genny/ci"
+	"github.com/gobuffalo/buffalo/genny/docker"
 	"github.com/gobuffalo/buffalo/genny/newapp/api"
 	"github.com/gobuffalo/buffalo/genny/newapp/core"
 	"github.com/gobuffalo/buffalo/genny/newapp/web"
 	"github.com/gobuffalo/buffalo/genny/refresh"
 	"github.com/gobuffalo/buffalo/genny/vcs"
+	"github.com/gobuffalo/buffalo/internal/takeon/github.com/markbates/errx"
 	"github.com/gobuffalo/envy"
 	fname "github.com/gobuffalo/flect/name"
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/gogen"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gogen"
 	"github.com/gobuffalo/logger"
 	"github.com/gobuffalo/meta"
 	"github.com/gobuffalo/packr/v2/plog"
-	"github.com/gobuffalo/plush"
-	"github.com/pkg/errors"
+	"github.com/gobuffalo/plush/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -51,7 +51,7 @@ func parseNewOptions(args []string) (newAppOptions, error) {
 	}
 
 	if len(args) == 0 {
-		return nopts, errors.New("you must enter a name for your new application")
+		return nopts, fmt.Errorf("you must enter a name for your new application")
 	}
 	if configError != nil {
 		return nopts, configError
@@ -81,15 +81,11 @@ func parseNewOptions(args []string) (newAppOptions, error) {
 
 	app.AsAPI = viper.GetBool("api")
 	app.VCS = viper.GetString("vcs")
-	app.WithDep = viper.GetBool("with-dep")
-	if app.WithDep {
-		app.WithModules = false
-		envy.MustSet("GO111MODULE", "off")
-	}
+
 	app.WithPop = !viper.GetBool("skip-pop")
 	app.WithWebpack = !viper.GetBool("skip-webpack")
 	app.WithYarn = !viper.GetBool("skip-yarn")
-	app.WithNodeJs = app.WithYarn || app.WithWebpack
+	app.WithNodeJs = app.WithWebpack
 	app.AsWeb = !app.AsAPI
 
 	if app.AsAPI {
@@ -198,7 +194,7 @@ var newCmd = &cobra.Command{
 			gg, err = web.New(wo)
 		}
 		if err != nil {
-			if errors.Cause(err) == core.ErrNotInGoPath {
+			if errx.Unwrap(err) == core.ErrNotInGoPath {
 				return notInGoPath(app)
 			}
 			return err
@@ -273,12 +269,11 @@ func init() {
 	newCmd.Flags().BoolP("dry-run", "d", false, "dry run")
 	newCmd.Flags().BoolP("verbose", "v", false, "verbosely print out the go get commands")
 	newCmd.Flags().Bool("skip-pop", false, "skips adding pop/soda to your app")
-	newCmd.Flags().Bool("with-dep", false, "adds github.com/golang/dep to your app")
 	newCmd.Flags().Bool("skip-webpack", false, "skips adding Webpack to your app")
 	newCmd.Flags().Bool("skip-yarn", false, "use npm instead of yarn for frontend dependencies management")
 	newCmd.Flags().String("db-type", "postgres", fmt.Sprintf("specify the type of database you want to use [%s]", strings.Join(pop.AvailableDialects, ", ")))
 	newCmd.Flags().String("docker", "multi", "specify the type of Docker file to generate [none, multi, standard]")
-	newCmd.Flags().String("ci-provider", "none", "specify the type of ci file you would like buffalo to generate [none, travis, gitlab-ci]")
+	newCmd.Flags().String("ci-provider", "none", "specify the type of ci file you would like buffalo to generate [none, travis, gitlab-ci, circleci]")
 	newCmd.Flags().String("vcs", "git", "specify the Version control system you would like to use [none, git, bzr]")
 	newCmd.Flags().String("module", "", "specify the root module (package) name. [defaults to 'automatic']")
 	viper.BindPFlags(newCmd.Flags())

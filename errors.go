@@ -6,14 +6,15 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 
+	"github.com/gobuffalo/buffalo/internal/defaults"
+	"github.com/gobuffalo/buffalo/internal/httpx"
+	"github.com/gobuffalo/buffalo/internal/takeon/github.com/markbates/errx"
 	"github.com/gobuffalo/events"
-	"github.com/gobuffalo/plush"
-	"github.com/gobuffalo/x/defaults"
-	"github.com/gobuffalo/x/httpx"
-	"github.com/pkg/errors"
+	"github.com/gobuffalo/plush/v4"
 )
 
 // HTTPError a typed error returned by http Handlers and used for choosing error handlers
@@ -33,7 +34,7 @@ type ErrorHandler func(int, error, Context) error
 // ErrorHandlers is used to hold a list of ErrorHandler
 // types that can be used to handle specific status codes.
 /*
-	a.ErrorHandlers[500] = func(status int, err error, c buffalo.Context) error {
+	a.ErrorHandlers[http.StatusInternalServerError] = func(status int, err error, c buffalo.Context) error {
 		res := c.Response()
 		res.WriteHeader(status)
 		res.Write([]byte(err.Error()))
@@ -77,19 +78,20 @@ func (a *App) PanicHandler(next Handler) Handler {
 				case error:
 					err = t
 				case string:
-					err = errors.New(t)
+					err = fmt.Errorf(t)
 				default:
-					err = errors.New(fmt.Sprint(t))
+					err = fmt.Errorf(fmt.Sprint(t))
 				}
-				err = err
 				events.EmitError(events.ErrPanic, err,
 					map[string]interface{}{
-						"context": c,
-						"app":     a,
+						"context":    c,
+						"app":        a,
+						"stacktrace": string(debug.Stack()),
+						"error":      err,
 					},
 				)
-				eh := a.ErrorHandlers.Get(500)
-				eh(500, err, c)
+				eh := a.ErrorHandlers.Get(http.StatusInternalServerError)
+				eh(http.StatusInternalServerError, err, c)
 			}
 		}()
 		return next(c)
@@ -102,12 +104,12 @@ func (a *App) defaultErrorMiddleware(next Handler) Handler {
 		if err == nil {
 			return nil
 		}
-		status := 500
+		status := http.StatusInternalServerError
 		// unpack root cause and check for HTTPError
-		cause := errors.Cause(err)
+		cause := errx.Unwrap(err)
 		switch cause {
 		case sql.ErrNoRows:
-			status = 404
+			status = http.StatusNotFound
 		default:
 			if h, ok := cause.(HTTPError); ok {
 				status = h.Status
@@ -130,7 +132,7 @@ func (a *App) defaultErrorMiddleware(next Handler) Handler {
 			})
 			// things have really hit the fan if we're here!!
 			a.Logger.Error(err)
-			c.Response().WriteHeader(500)
+			c.Response().WriteHeader(http.StatusInternalServerError)
 			c.Response().Write([]byte(err.Error()))
 		}
 		return nil
@@ -155,14 +157,11 @@ type ErrorResponse struct {
 
 const defaultErrorCT = "text/html; charset=utf-8"
 
-type stackTracer interface {
-	StackTrace() errors.StackTrace
-}
-
 func defaultErrorHandler(status int, origErr error, c Context) error {
 	env := c.Value("env")
 	requestCT := defaults.String(httpx.ContentType(c.Request()), defaultErrorCT)
 
+	c.LogField("status", status)
 	c.Logger().Error(origErr)
 	c.Response().WriteHeader(status)
 
@@ -173,19 +172,13 @@ func defaultErrorHandler(status int, origErr error, c Context) error {
 		return nil
 	}
 
-	trace := fmt.Sprintf("%s\n\n%+v", origErr, origErr)
-	if st, ok := origErr.(stackTracer); ok {
-		var log []string
-		for _, t := range st.StackTrace() {
-			log = append(log, fmt.Sprintf("%+v", t))
-		}
-		trace = fmt.Sprintf("%s\n%s", origErr, strings.Join(log, "\n"))
-	}
+	trace := origErr.Error()
+
 	switch strings.ToLower(requestCT) {
 	case "application/json", "text/json", "json":
 		c.Response().Header().Set("content-type", "application/json")
 		err := json.NewEncoder(c.Response()).Encode(&ErrorResponse{
-			Error: errors.Cause(origErr).Error(),
+			Error: errx.Unwrap(origErr).Error(),
 			Trace: trace,
 			Code:  status,
 		})
@@ -195,7 +188,7 @@ func defaultErrorHandler(status int, origErr error, c Context) error {
 	case "application/xml", "text/xml", "xml":
 		c.Response().Header().Set("content-type", "text/xml")
 		err := xml.NewEncoder(c.Response()).Encode(&ErrorResponse{
-			Error: errors.Cause(origErr).Error(),
+			Error: errx.Unwrap(origErr).Error(),
 			Trace: trace,
 			Code:  status,
 		})
@@ -207,16 +200,18 @@ func defaultErrorHandler(status int, origErr error, c Context) error {
 		if err := c.Request().ParseForm(); err != nil {
 			trace = fmt.Sprintf("%s\n%s", err.Error(), trace)
 		}
+
 		routes := c.Value("routes")
-		if cd, ok := c.(*DefaultContext); ok {
-			delete(cd.data, "app")
-			delete(cd.data, "routes")
-		}
+		cd := c.Data()
+
+		delete(cd, "app")
+		delete(cd, "routes")
+
 		data := map[string]interface{}{
 			"routes":      routes,
 			"error":       trace,
 			"status":      status,
-			"data":        c.Data(),
+			"data":        cd,
 			"params":      c.Params(),
 			"posted_form": c.Request().Form,
 			"context":     c,
@@ -225,13 +220,16 @@ func defaultErrorHandler(status int, origErr error, c Context) error {
 				return fmt.Sprintf("%+v", v)
 			},
 		}
+
 		ctx := plush.NewContextWith(data)
 		t, err := plush.Render(devErrorTmpl, ctx)
 		if err != nil {
 			return err
 		}
+
 		res := c.Response()
 		_, err = res.Write([]byte(t))
+
 		return err
 	}
 	return nil

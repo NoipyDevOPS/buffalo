@@ -6,7 +6,7 @@ import (
 
 	"github.com/gobuffalo/buffalo/genny/newapp/core"
 	"github.com/gobuffalo/envy"
-	"github.com/gobuffalo/genny/gentest"
+	"github.com/gobuffalo/genny/v2/gentest"
 	"github.com/gobuffalo/meta"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +19,8 @@ func init() {
 func Test_New(t *testing.T) {
 	r := require.New(t)
 
-	app := meta.New(".")
+	app := meta.Named("api", ".")
+	(&app).PackageRoot("api")
 	app.WithModules = false
 	app.AsAPI = true
 	app.AsWeb = false
@@ -38,8 +39,8 @@ func Test_New(t *testing.T) {
 
 	res := run.Results()
 
-	cmds := []string{"go get github.com/gobuffalo/buffalo-plugins",
-		"go get -t ./...",
+	cmds := []string{
+		"go mod init api",
 	}
 	r.Len(res.Commands, len(cmds))
 
@@ -59,7 +60,17 @@ func Test_New(t *testing.T) {
 
 	f, err = res.Find("actions/home.go")
 	r.NoError(err)
-	r.Contains(f.String(), `return c.Render(200, r.JSON(map[string]string{"message": "Welcome to Buffalo!"}))`)
+	r.Contains(f.String(), `return c.Render(http.StatusOK, r.JSON(map[string]string{"message": "Welcome to Buffalo!"}))`)
+
+	f, err = res.Find("actions/app.go")
+	r.NoError(err)
+	r.Contains(f.String(), `i18n "github.com/gobuffalo/mw-i18n"`)
+	r.Contains(f.String(), `var T *i18n.Translator`)
+	r.Contains(f.String(), `func translations() buffalo.MiddlewareFunc {`)
+
+	f, err = res.Find("locales/all.en-us.yaml")
+	r.NoError(err)
+	r.Contains(f.String(), `translation: "Welcome to Buffalo (EN)"`)
 
 	unexpected := []string{
 		"Dockerfile",

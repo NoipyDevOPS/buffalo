@@ -9,24 +9,23 @@ import (
 	"strings"
 
 	"github.com/gobuffalo/flect"
-	"github.com/pkg/errors"
 
 	"github.com/gobuffalo/events"
-	gcontext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
 )
 
 // RouteInfo provides information about the underlying route that
 // was built.
 type RouteInfo struct {
-	Method      string     `json:"method"`
-	Path        string     `json:"path"`
-	HandlerName string     `json:"handler"`
-	PathName    string     `json:"pathName"`
-	Aliases     []string   `json:"aliases"`
-	MuxRoute    *mux.Route `json:"-"`
-	Handler     Handler    `json:"-"`
-	App         *App       `json:"-"`
+	Method       string     `json:"method"`
+	Path         string     `json:"path"`
+	HandlerName  string     `json:"handler"`
+	ResourceName string     `json:"resourceName,omitempty"`
+	PathName     string     `json:"pathName"`
+	Aliases      []string   `json:"aliases"`
+	MuxRoute     *mux.Route `json:"-"`
+	Handler      Handler    `json:"-"`
+	App          *App       `json:"-"`
 }
 
 // String returns a JSON representation of the RouteInfo
@@ -81,7 +80,7 @@ func (ri *RouteInfo) BuildPathHelper() RouteHelperFunc {
 
 		url, err := cRoute.MuxRoute.URL(pairs...)
 		if err != nil {
-			return "", errors.Wrapf(err, "missing parameters for %v", cRoute.Path)
+			return "", fmt.Errorf("missing parameters for %v: %s", cRoute.Path, err)
 		}
 
 		result := url.Path
@@ -92,8 +91,6 @@ func (ri *RouteInfo) BuildPathHelper() RouteHelperFunc {
 }
 
 func (ri RouteInfo) ServeHTTP(res http.ResponseWriter, req *http.Request) {
-	defer gcontext.Clear(req)
-
 	a := ri.App
 
 	c := a.newContext(ri, res, req)
@@ -110,7 +107,7 @@ func (ri RouteInfo) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	err := a.Middleware.handler(ri)(c)
 
 	if err != nil {
-		status := 500
+		status := http.StatusInternalServerError
 		if he, ok := err.(HTTPError); ok {
 			status = he.Status
 		}

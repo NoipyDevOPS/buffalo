@@ -35,13 +35,14 @@ func (a *App) Muxer() *mux.Router {
 func New(opts Options) *App {
 	LoadPlugins()
 	envy.Load()
+
 	opts = optionsWithDefaults(opts)
 
 	a := &App{
 		Options: opts,
 		ErrorHandlers: ErrorHandlers{
-			404: defaultErrorHandler,
-			500: defaultErrorHandler,
+			http.StatusNotFound:            defaultErrorHandler,
+			http.StatusInternalServerError: defaultErrorHandler,
 		},
 		router:   mux.NewRouter(),
 		moot:     &sync.RWMutex{},
@@ -56,12 +57,13 @@ func New(opts Options) *App {
 		return func(res http.ResponseWriter, req *http.Request) {
 			c := a.newContext(RouteInfo{}, res, req)
 			err := fmt.Errorf(errorf, req.Method, req.URL.Path)
-			a.ErrorHandlers.Get(code)(code, err, c)
+			_ = a.ErrorHandlers.Get(code)(code, err, c)
+
 		}
 	}
 
-	a.router.NotFoundHandler = notFoundHandler("path not found: %s %s", 404)
-	a.router.MethodNotAllowedHandler = notFoundHandler("method not found: %s %s", 405)
+	a.router.NotFoundHandler = notFoundHandler("path not found: %s %s", http.StatusNotFound)
+	a.router.MethodNotAllowedHandler = notFoundHandler("method not found: %s %s", http.StatusMethodNotAllowed)
 
 	if a.MethodOverride == nil {
 		a.MethodOverride = MethodOverride

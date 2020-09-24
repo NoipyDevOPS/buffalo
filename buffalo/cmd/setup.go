@@ -2,27 +2,19 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
-	"golang.org/x/sync/errgroup"
-
-	"errors"
-
-	"github.com/gobuffalo/envy"
 	"github.com/gobuffalo/events"
 	"github.com/gobuffalo/meta"
-	"github.com/markbates/deplist"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 var setupOptions = struct {
 	verbose       bool
-	updateGoDeps  bool
 	dropDatabases bool
 }{}
 
@@ -32,9 +24,6 @@ var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Setup a newly created, or recently checked out application.",
 	Long: `Setup runs through checklist to make sure dependencies are setup correctly.
-
-Dependencies (if used):
-* Runs "dep ensure" to install required Go dependencies.
 
 Asset Pipeline (if used):
 * Runs "npm install" or "yarn install" to install asset dependencies.
@@ -53,7 +42,7 @@ Tests:
 			"app": app,
 		}
 		events.EmitPayload(EvtSetupStarted, payload)
-		for _, check := range []setupCheck{assetCheck, updateGoDepsCheck, databaseCheck, testCheck} {
+		for _, check := range []setupCheck{assetCheck, databaseCheck, testCheck} {
 			err := check(app)
 			if err != nil {
 				events.EmitError(EvtSetupErr, err, payload)
@@ -63,64 +52,6 @@ Tests:
 		events.EmitPayload(EvtSetupFinished, payload)
 		return nil
 	},
-}
-
-func updateGoDepsCheck(app meta.App) error {
-	if app.WithModules {
-		c := exec.Command(envy.Get("GO_BIN", "go"), "get")
-		return run(c)
-	}
-	if app.WithDep {
-		if _, err := exec.LookPath("dep"); err != nil {
-			if err := run(exec.Command(envy.Get("GO_BIN", "go"), "get", "github.com/golang/dep/cmd/dep")); err != nil {
-				return err
-			}
-		}
-		args := []string{"ensure"}
-		if setupOptions.verbose {
-			args = append(args, "-v")
-		}
-		if setupOptions.updateGoDeps {
-			args = append(args, "--update")
-		}
-		err := run(exec.Command("dep", args...))
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// go old school with the installation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	wg, _ := errgroup.WithContext(ctx)
-	deps, err := deplist.List()
-	if err != nil {
-		return err
-	}
-
-	deps["github.com/gobuffalo/suite"] = "github.com/gobuffalo/suite"
-
-	for dep := range deps {
-		args := []string{"get"}
-		if setupOptions.verbose {
-			args = append(args, "-v")
-		}
-		if setupOptions.updateGoDeps {
-			args = append(args, "-u")
-		}
-		args = append(args, dep)
-		c := exec.Command(envy.Get("GO_BIN", "go"), args...)
-		f := func() error {
-			return run(c)
-		}
-		wg.Go(f)
-	}
-	err = wg.Wait()
-	if err != nil {
-		return fmt.Errorf("We encountered the following error trying to install and update the dependencies for this application:\n%s", err)
-	}
-	return nil
 }
 
 func testCheck(meta.App) error {
@@ -222,10 +153,10 @@ func yarnCheck(app meta.App) error {
 
 func nodeCheck(meta.App) error {
 	if _, err := exec.LookPath("node"); err != nil {
-		return errors.New("this application requires node, and we could not find it installed on your system please install node and try again")
+		return fmt.Errorf("this application requires node, and we could not find it installed on your system please install node and try again")
 	}
 	if _, err := exec.LookPath("npm"); err != nil {
-		return errors.New("this application requires npm, and we could not find it installed on your system please install npm and try again")
+		return fmt.Errorf("this application requires npm, and we could not find it installed on your system please install npm and try again")
 	}
 	return nil
 }
@@ -240,7 +171,6 @@ func run(cmd *exec.Cmd) error {
 
 func init() {
 	setupCmd.Flags().BoolVarP(&setupOptions.verbose, "verbose", "v", false, "run with verbose output")
-	setupCmd.Flags().BoolVarP(&setupOptions.updateGoDeps, "update", "u", false, "run go get -u against the application's Go dependencies")
 	setupCmd.Flags().BoolVarP(&setupOptions.dropDatabases, "drop", "d", false, "drop existing databases")
 
 	decorate("setup", setupCmd)

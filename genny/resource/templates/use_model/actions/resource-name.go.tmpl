@@ -2,9 +2,11 @@ package actions
 
 import (
 
-  "errors"
+  "fmt"
+  "net/http"
   "github.com/gobuffalo/buffalo"
-  "github.com/gobuffalo/pop"
+  "github.com/gobuffalo/pop/v5"
+  "github.com/gobuffalo/x/responder"
   "{{.opts.App.ModelsPkg}}"
 )
 
@@ -31,7 +33,7 @@ func (v {{.opts.Name.Resource}}Resource) List(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   {{.opts.Model.VarCasePlural}} := &models.{{.opts.Model.Group}}{}
@@ -45,14 +47,17 @@ func (v {{.opts.Name.Resource}}Resource) List(c buffalo.Context) error {
     return err
   }
 
-  // Add the paginator to the context so it can be used in the template.
-  c.Set("pagination", q.Paginator)
+  return responder.Wants("html", func (c buffalo.Context) error {
+    // Add the paginator to the context so it can be used in the template.
+    c.Set("pagination", q.Paginator)
 
-  {{ if ne .opts.Model.Tableize.String .opts.Name.URL.String -}}
-  // hint for Auto renderer to search proper template location
-  c.Set("template_prefix", "{{.opts.Name.URL}}")
-  {{ end -}}
-  return c.Render(200, r.Auto(c, {{.opts.Model.VarCasePlural}}))
+    c.Set("{{.opts.Model.VarCasePlural}}", {{.opts.Model.VarCasePlural}})
+    return c.Render(http.StatusOK, r.HTML("/{{.opts.Name.File.Pluralize}}/index.plush.html"))
+  }).Wants("json", func (c buffalo.Context) error {
+    return c.Render(200, r.JSON({{.opts.Model.VarCasePlural}}))
+  }).Wants("xml", func (c buffalo.Context) error {
+    return c.Render(200, r.XML({{.opts.Model.VarCasePlural}}))
+  }).Respond(c)
 }
 
 // Show gets the data for one {{.opts.Model.Proper}}. This function is mapped to
@@ -61,7 +66,7 @@ func (v {{.opts.Name.Resource}}Resource) Show(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   // Allocate an empty {{.opts.Model.Proper}}
@@ -69,25 +74,27 @@ func (v {{.opts.Name.Resource}}Resource) Show(c buffalo.Context) error {
 
   // To find the {{.opts.Model.Proper}} the parameter {{.opts.Name.ParamID}} is used.
   if err := tx.Find({{.opts.Model.VarCaseSingle}}, c.Param("{{.opts.Name.ParamID}}")); err != nil {
-    return c.Error(404, err)
+    return c.Error(http.StatusNotFound, err)
   }
 
-  {{ if ne .opts.Model.Tableize.String .opts.Name.URL.String -}}
-  // hint for Auto renderer to search proper template location
-  c.Set("template_prefix", "{{.opts.Name.URL}}")
-  {{ end -}}
-  return c.Render(200, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+  return responder.Wants("html", func (c buffalo.Context) error {
+    c.Set("{{.opts.Model.VarCaseSingle}}", {{.opts.Model.VarCaseSingle}})
+
+    return c.Render(http.StatusOK, r.HTML("/{{.opts.Name.File.Pluralize}}/show.plush.html"))
+  }).Wants("json", func (c buffalo.Context) error {
+    return c.Render(200, r.JSON({{.opts.Model.VarCaseSingle}}))
+  }).Wants("xml", func (c buffalo.Context) error {
+    return c.Render(200, r.XML({{.opts.Model.VarCaseSingle}}))
+  }).Respond(c)
 }
 
 {{ if .opts.App.AsWeb -}}
 // New renders the form for creating a new {{.opts.Model.Proper}}.
 // This function is mapped to the path GET /{{.opts.Name.URL}}/new
 func (v {{.opts.Name.Resource}}Resource) New(c buffalo.Context) error {
-  {{ if ne .opts.Model.Tableize.String .opts.Name.URL.String -}}
-  // hint for Auto renderer to search proper template location
-  c.Set("template_prefix", "{{.opts.Name.URL}}")
-  {{ end -}}
-  return c.Render(200, r.Auto(c, &models.{{.opts.Model.Proper}}{}))
+  c.Set("{{.opts.Model.VarCaseSingle}}", &models.{{.opts.Model.Proper}}{})
+
+  return c.Render(http.StatusOK, r.HTML("/{{.opts.Name.File.Pluralize}}/new.plush.html"))
 }
 {{ end -}}
 
@@ -105,7 +112,7 @@ func (v {{.opts.Name.Resource}}Resource) Create(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   // Validate the data from the html form
@@ -115,21 +122,33 @@ func (v {{.opts.Name.Resource}}Resource) Create(c buffalo.Context) error {
   }
 
   if verrs.HasAny() {
-    // Make the errors available inside the html template
-    c.Set("errors", verrs)
+    return responder.Wants("html", func (c buffalo.Context) error {
+      // Make the errors available inside the html template
+      c.Set("errors", verrs)
 
-    // Render again the new.html template that the user can
-    // correct the input.
-    return c.Render(422, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+      // Render again the new.html template that the user can
+      // correct the input.
+      c.Set("{{.opts.Model.VarCaseSingle}}", {{.opts.Model.VarCaseSingle}})
+
+      return c.Render(http.StatusUnprocessableEntity, r.HTML("/{{.opts.Name.File.Pluralize}}/new.plush.html"))
+    }).Wants("json", func (c buffalo.Context) error {
+      return c.Render(http.StatusUnprocessableEntity, r.JSON(verrs))
+    }).Wants("xml", func (c buffalo.Context) error {
+      return c.Render(http.StatusUnprocessableEntity, r.XML(verrs))
+    }).Respond(c)
   }
 
-  {{ if .opts.App.AsWeb -}}
-  // If there are no errors set a success message
-  c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.created.success"))
-  {{ end -}}
+  return responder.Wants("html", func (c buffalo.Context) error {
+    // If there are no errors set a success message
+    c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.created.success"))
 
-  // and redirect to the {{.opts.Name.URL}} index page
-  return c.Render(201, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+    // and redirect to the show page
+    return c.Redirect(http.StatusSeeOther, "/{{.opts.Name.URL}}/%v", {{.opts.Model.VarCaseSingle}}.ID)
+  }).Wants("json", func (c buffalo.Context) error {
+    return c.Render(http.StatusCreated, r.JSON({{.opts.Model.VarCaseSingle}}))
+  }).Wants("xml", func (c buffalo.Context) error {
+    return c.Render(http.StatusCreated, r.XML({{.opts.Model.VarCaseSingle}}))
+  }).Respond(c)
 }
 
 {{ if .opts.App.AsWeb -}}
@@ -139,21 +158,18 @@ func (v {{.opts.Name.Resource}}Resource) Edit(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   // Allocate an empty {{.opts.Model.Proper}}
   {{.opts.Model.VarCaseSingle}} := &models.{{.opts.Model.Proper}}{}
 
   if err := tx.Find({{.opts.Model.VarCaseSingle}}, c.Param("{{.opts.Name.ParamID}}")); err != nil {
-    return c.Error(404, err)
+    return c.Error(http.StatusNotFound, err)
   }
 
-  {{ if ne .opts.Model.Tableize.String .opts.Name.URL.String -}}
-  // hint for Auto renderer to search proper template location
-  c.Set("template_prefix", "{{.opts.Name.URL}}")
-  {{ end -}}
-  return c.Render(200, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+  c.Set("{{.opts.Model.VarCaseSingle}}", {{.opts.Model.VarCaseSingle}})
+  return c.Render(http.StatusOK, r.HTML("/{{.opts.Name.File.Pluralize}}/edit.plush.html"))
 }
 {{ end -}}
 
@@ -163,14 +179,14 @@ func (v {{.opts.Name.Resource}}Resource) Update(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   // Allocate an empty {{.opts.Model.Proper}}
   {{.opts.Model.VarCaseSingle}} := &models.{{.opts.Model.Proper}}{}
 
   if err := tx.Find({{.opts.Model.VarCaseSingle}}, c.Param("{{.opts.Name.ParamID}}")); err != nil {
-    return c.Error(404, err)
+    return c.Error(http.StatusNotFound, err)
   }
 
   // Bind {{.opts.Model.Proper}} to the html form elements
@@ -184,21 +200,33 @@ func (v {{.opts.Name.Resource}}Resource) Update(c buffalo.Context) error {
   }
 
   if verrs.HasAny() {
-    // Make the errors available inside the html template
-    c.Set("errors", verrs)
+    return responder.Wants("html", func (c buffalo.Context) error {
+      // Make the errors available inside the html template
+      c.Set("errors", verrs)
 
-    // Render again the edit.html template that the user can
-    // correct the input.
-    return c.Render(422, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+      // Render again the edit.html template that the user can
+      // correct the input.
+      c.Set("{{.opts.Model.VarCaseSingle}}", {{.opts.Model.VarCaseSingle}})
+
+      return c.Render(http.StatusUnprocessableEntity, r.HTML("/{{.opts.Name.File.Pluralize}}/edit.plush.html"))
+    }).Wants("json", func (c buffalo.Context) error {
+      return c.Render(http.StatusUnprocessableEntity, r.JSON(verrs))
+    }).Wants("xml", func (c buffalo.Context) error {
+      return c.Render(http.StatusUnprocessableEntity, r.XML(verrs))
+    }).Respond(c)
   }
 
-  {{ if .opts.App.AsWeb -}}
-  // If there are no errors set a success message
-  c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.updated.success"))
-  {{ end -}}
+  return responder.Wants("html", func (c buffalo.Context) error {
+    // If there are no errors set a success message
+    c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.updated.success"))
 
-  // and redirect to the {{.opts.Name.URL}} index page
-  return c.Render(200, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+    // and redirect to the show page
+    return c.Redirect(http.StatusSeeOther, "/{{.opts.Name.URL}}/%v", {{.opts.Model.VarCaseSingle}}.ID)
+  }).Wants("json", func (c buffalo.Context) error {
+    return c.Render(http.StatusOK, r.JSON({{.opts.Model.VarCaseSingle}}))
+  }).Wants("xml", func (c buffalo.Context) error {
+    return c.Render(http.StatusOK, r.XML({{.opts.Model.VarCaseSingle}}))
+  }).Respond(c)
 }
 
 // Destroy deletes a {{.opts.Model.Proper}} from the DB. This function is mapped
@@ -207,7 +235,7 @@ func (v {{.opts.Name.Resource}}Resource) Destroy(c buffalo.Context) error {
   // Get the DB connection from the context
   tx, ok := c.Value("tx").(*pop.Connection)
   if !ok {
-    return errors.New("no transaction found")
+    return fmt.Errorf("no transaction found")
   }
 
   // Allocate an empty {{.opts.Model.Proper}}
@@ -215,18 +243,22 @@ func (v {{.opts.Name.Resource}}Resource) Destroy(c buffalo.Context) error {
 
   // To find the {{.opts.Model.Proper}} the parameter {{.opts.Name.ParamID}} is used.
   if err := tx.Find({{.opts.Model.VarCaseSingle}}, c.Param("{{.opts.Name.ParamID}}")); err != nil {
-    return c.Error(404, err)
+    return c.Error(http.StatusNotFound, err)
   }
 
   if err := tx.Destroy({{.opts.Model.VarCaseSingle}}); err != nil {
     return err
   }
 
-  {{ if .opts.App.AsWeb -}}
-  // If there are no errors set a flash message
-  c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.destroyed.success"))
-  {{ end -}}
+  return responder.Wants("html", func (c buffalo.Context) error {
+    // If there are no errors set a flash message
+    c.Flash().Add("success", T.Translate(c, "{{.opts.Model.VarCaseSingle}}.destroyed.success"))
 
-  // Redirect to the {{.opts.Name.URL}} index page
-  return c.Render(200, r.Auto(c, {{.opts.Model.VarCaseSingle}}))
+    // Redirect to the index page
+    return c.Redirect(http.StatusSeeOther, "/{{.opts.Name.URL}}")
+  }).Wants("json", func (c buffalo.Context) error {
+    return c.Render(http.StatusOK, r.JSON({{.opts.Model.VarCaseSingle}}))
+  }).Wants("xml", func (c buffalo.Context) error {
+    return c.Render(http.StatusOK, r.XML({{.opts.Model.VarCaseSingle}}))
+  }).Respond(c)
 }

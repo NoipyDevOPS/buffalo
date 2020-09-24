@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"path"
+	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
-
-	"errors"
 
 	"github.com/gobuffalo/flect/name"
 )
 
-var errNoID = errors.New("no ID on model")
+var errNoID = fmt.Errorf("no ID on model")
 
 // ErrRedirect indicates to Context#Render that this is a
 // redirect and a template shouldn't be rendered.
@@ -95,8 +94,9 @@ func (htmlAutoRenderer) ContentType() string {
 func (ir htmlAutoRenderer) Render(w io.Writer, data Data) error {
 	n := name.New(ir.typeName())
 	pname := name.New(n.Pluralize().String())
+	isPlural := ir.isPlural()
 
-	if ir.isPlural() {
+	if isPlural {
 		data[pname.VarCasePlural().String()] = ir.model
 	} else {
 		data[n.VarCaseSingle().String()] = ir.model
@@ -110,39 +110,41 @@ func (ir htmlAutoRenderer) Render(w io.Writer, data Data) error {
 	switch data["method"] {
 	case "PUT", "POST", "DELETE":
 		if err := ir.redirect(pname, w, data); err != nil {
-			if er, ok := err.(ErrRedirect); ok && er.Status >= 300 && er.Status < 400 {
+			if er, ok := err.(ErrRedirect); ok && er.Status >= http.StatusMultipleChoices && er.Status < http.StatusBadRequest {
 				return err
 			}
+
 			if data["method"] == "PUT" {
-				return ir.HTML(fmt.Sprintf("%s/edit.html", templatePrefix)).Render(w, data)
+				return ir.HTML(filepath.Join(templatePrefix.String(), "edit.html")).Render(w, data)
 			}
-			return ir.HTML(fmt.Sprintf("%s/new.html", templatePrefix)).Render(w, data)
+
+			return ir.HTML(filepath.Join(templatePrefix.String(), "new.html")).Render(w, data)
 		}
 		return nil
 	}
+
 	cp, ok := data["current_path"].(string)
 
 	defCase := func() error {
-		return ir.HTML(fmt.Sprintf("%s/%s.html", templatePrefix, "index")).Render(w, data)
+		return ir.HTML(filepath.Join(templatePrefix.String(), "index.html")).Render(w, data)
 	}
+
 	if !ok {
 		return defCase()
 	}
 
 	if strings.HasSuffix(cp, "/edit/") {
-		return ir.HTML(fmt.Sprintf("%s/edit.html", templatePrefix)).Render(w, data)
-	}
-	if strings.HasSuffix(cp, "/new/") {
-		return ir.HTML(fmt.Sprintf("%s/new.html", templatePrefix)).Render(w, data)
+		return ir.HTML(filepath.Join(templatePrefix.String(), "edit.html")).Render(w, data)
 	}
 
-	x, err := regexp.Compile(fmt.Sprintf("%s/.+", pname.URL()))
-	if err != nil {
-		return err
+	if strings.HasSuffix(cp, "/new/") {
+		return ir.HTML(filepath.Join(templatePrefix.String(), "new.html")).Render(w, data)
 	}
-	if x.MatchString(cp) {
-		return ir.HTML(fmt.Sprintf("%s/show.html", templatePrefix)).Render(w, data)
+
+	if !isPlural {
+		return ir.HTML(filepath.Join(templatePrefix.String(), "show.html")).Render(w, data)
 	}
+
 	return defCase()
 }
 
@@ -173,9 +175,9 @@ func (ir htmlAutoRenderer) redirect(name name.Ident, w io.Writer, data Data) err
 			}
 		}
 
-		code := 302
+		code := http.StatusFound
 		if i, ok := data["status"].(int); ok {
-			if i >= 300 {
+			if i >= http.StatusMultipleChoices {
 				code = i
 			}
 		}

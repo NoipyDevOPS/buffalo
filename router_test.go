@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"errors"
-
 	"github.com/gobuffalo/buffalo/render"
 	"github.com/gobuffalo/envy"
 	"github.com/gobuffalo/httptest"
@@ -21,9 +19,9 @@ import (
 
 func testApp() *App {
 	a := New(Options{})
-	a.Redirect(301, "/foo", "/bar")
+	a.Redirect(http.StatusMovedPermanently, "/foo", "/bar")
 	a.GET("/bar", func(c Context) error {
-		return c.Render(200, render.String("bar"))
+		return c.Render(http.StatusOK, render.String("bar"))
 	})
 
 	rt := a.Group("/router/tests")
@@ -31,7 +29,7 @@ func testApp() *App {
 	h := func(c Context) error {
 		x := c.Request().Method + "|"
 		x += strings.TrimSuffix(c.Value("current_path").(string), "/")
-		return c.Render(200, render.String(x))
+		return c.Render(http.StatusOK, render.String(x))
 	}
 
 	rt.GET("/", h)
@@ -41,7 +39,7 @@ func testApp() *App {
 	rt.OPTIONS("/", h)
 	rt.PATCH("/", h)
 
-	a.ErrorHandlers[405] = func(status int, err error, c Context) error {
+	a.ErrorHandlers[http.StatusMethodNotAllowed] = func(status int, err error, c Context) error {
 		res := c.Response()
 		res.WriteHeader(status)
 		res.Write([]byte("my custom 405"))
@@ -54,7 +52,7 @@ func otherTestApp() *App {
 	a := New(Options{})
 	f := func(c Context) error {
 		req := c.Request()
-		return c.Render(200, render.String(req.Method+" - "+req.URL.String()))
+		return c.Render(http.StatusOK, render.String(req.Method+" - "+req.URL.String()))
 	}
 	a.GET("/foo", f)
 	a.POST("/bar", f)
@@ -67,9 +65,9 @@ func Test_MethodNotFoundError(t *testing.T) {
 
 	a := New(Options{})
 	a.GET("/bar", func(c Context) error {
-		return c.Render(200, render.String("bar"))
+		return c.Render(http.StatusOK, render.String("bar"))
 	})
-	a.ErrorHandlers[405] = func(status int, err error, c Context) error {
+	a.ErrorHandlers[http.StatusMethodNotAllowed] = func(status int, err error, c Context) error {
 		res := c.Response()
 		res.WriteHeader(status)
 		res.Write([]byte("my custom 405"))
@@ -77,7 +75,7 @@ func Test_MethodNotFoundError(t *testing.T) {
 	}
 	w := httptest.New(a)
 	res := w.HTML("/bar").Post(nil)
-	r.Equal(405, res.Code)
+	r.Equal(http.StatusMethodNotAllowed, res.Code)
 	r.Contains(res.Body.String(), "my custom 405")
 }
 
@@ -170,13 +168,13 @@ func Test_PreHandlers(t *testing.T) {
 	a := testApp()
 	bh := func(c Context) error {
 		req := c.Request()
-		return c.Render(200, render.String(req.Method+"-"+req.URL.String()))
+		return c.Render(http.StatusOK, render.String(req.Method+"-"+req.URL.String()))
 	}
 	a.GET("/ph", bh)
 	a.POST("/ph", bh)
 	mh := func(res http.ResponseWriter, req *http.Request) {
 		if req.Method == "GET" {
-			res.WriteHeader(418)
+			res.WriteHeader(http.StatusTeapot)
 			res.Write([]byte("boo"))
 		}
 	}
@@ -190,8 +188,8 @@ func Test_PreHandlers(t *testing.T) {
 		Method string
 		Result string
 	}{
-		{Code: 418, Method: "GET", Result: "boo"},
-		{Code: 200, Method: "POST", Result: "POST-/ph/"},
+		{Code: http.StatusTeapot, Method: "GET", Result: "boo"},
+		{Code: http.StatusOK, Method: "POST", Result: "POST-/ph/"},
 	}
 
 	for _, v := range table {
@@ -211,7 +209,7 @@ func Test_PreWares(t *testing.T) {
 	a := testApp()
 	bh := func(c Context) error {
 		req := c.Request()
-		return c.Render(200, render.String(req.Method+"-"+req.URL.String()))
+		return c.Render(http.StatusOK, render.String(req.Method+"-"+req.URL.String()))
 	}
 	a.GET("/ph", bh)
 	a.POST("/ph", bh)
@@ -219,7 +217,7 @@ func Test_PreWares(t *testing.T) {
 	mh := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			if req.Method == "GET" {
-				res.WriteHeader(418)
+				res.WriteHeader(http.StatusTeapot)
 				res.Write([]byte("boo"))
 			}
 		})
@@ -235,8 +233,8 @@ func Test_PreWares(t *testing.T) {
 		Method string
 		Result string
 	}{
-		{Code: 418, Method: "GET", Result: "boo"},
-		{Code: 200, Method: "POST", Result: "POST-/ph/"},
+		{Code: http.StatusTeapot, Method: "GET", Result: "boo"},
+		{Code: http.StatusOK, Method: "POST", Result: "POST-/ph/"},
 	}
 
 	for _, v := range table {
@@ -282,12 +280,12 @@ func Test_Router_Group(t *testing.T) {
 	a := testApp()
 	g := a.Group("/api/v1")
 	g.GET("/users", func(c Context) error {
-		return c.Render(201, nil)
+		return c.Render(http.StatusCreated, nil)
 	})
 
 	w := httptest.New(a)
 	res := w.HTML("/api/v1/users").Get()
-	r.Equal(201, res.Code)
+	r.Equal(http.StatusCreated, res.Code)
 }
 
 func Test_Router_Group_on_Group(t *testing.T) {
@@ -296,16 +294,16 @@ func Test_Router_Group_on_Group(t *testing.T) {
 	a := testApp()
 	g := a.Group("/api/v1")
 	g.GET("/users", func(c Context) error {
-		return c.Render(201, nil)
+		return c.Render(http.StatusCreated, nil)
 	})
 	f := g.Group("/foo")
 	f.GET("/bar", func(c Context) error {
-		return c.Render(420, nil)
+		return c.Render(http.StatusTeapot, nil)
 	})
 
 	w := httptest.New(a)
 	res := w.HTML("/api/v1/foo/bar").Get()
-	r.Equal(420, res.Code)
+	r.Equal(http.StatusTeapot, res.Code)
 }
 
 func Test_Router_Group_Middleware(t *testing.T) {
@@ -328,7 +326,7 @@ func Test_Router_Redirect(t *testing.T) {
 	r := require.New(t)
 	w := httptest.New(testApp())
 	res := w.HTML("/foo").Get()
-	r.Equal(301, res.Code)
+	r.Equal(http.StatusMovedPermanently, res.Code)
 	r.Equal("/bar", res.Location())
 }
 
@@ -343,7 +341,7 @@ func Test_Router_ServeFiles(t *testing.T) {
 	w := httptest.New(a)
 	res := w.HTML("/assets/foo.png").Get()
 
-	r.Equal(200, res.Code)
+	r.Equal(http.StatusOK, res.Code)
 	r.Equal("foo", res.Body.String())
 
 	r.NotEqual(res.Header().Get("ETag"), "")
@@ -353,7 +351,7 @@ func Test_Router_ServeFiles(t *testing.T) {
 	w = httptest.New(a)
 	res = w.HTML("/assets/foo.png").Get()
 
-	r.Equal(200, res.Code)
+	r.Equal(http.StatusOK, res.Code)
 	r.Equal("foo", res.Body.String())
 
 	r.NotEqual(res.Header().Get("ETag"), "")
@@ -384,12 +382,12 @@ type WebResource struct {
 
 // Edit default implementation. Returns a 404
 func (v WebResource) Edit(c Context) error {
-	return c.Error(404, errors.New("resource not implemented"))
+	return c.Error(http.StatusNotFound, fmt.Errorf("resource not implemented"))
 }
 
 // New default implementation. Returns a 404
 func (v WebResource) New(c Context) error {
-	return c.Error(404, errors.New("resource not implemented"))
+	return c.Error(http.StatusNotFound, fmt.Errorf("resource not implemented"))
 }
 
 func Test_App_NamedRoutes(t *testing.T) {
@@ -410,14 +408,14 @@ func Test_App_NamedRoutes(t *testing.T) {
 	var resourcesResource Resource = ResourcesResource{}
 
 	rr := render.New(render.Options{
-		HTMLLayout:   "application.html",
+		HTMLLayout:   "application.plush.html",
 		TemplatesBox: packr.New("../templates", "../templates"),
 		Helpers:      map[string]interface{}{},
 	})
 
 	sampleHandler := func(c Context) error {
 		c.Set("opts", map[string]interface{}{})
-		return c.Render(200, rr.String(`
+		return c.Render(http.StatusOK, rr.String(`
 			1. <%= rootPath() %>
 			2. <%= userPath({user_id: 1}) %>
 			3. <%= myPeepsPath() %>
@@ -430,6 +428,9 @@ func Test_App_NamedRoutes(t *testing.T) {
 			11. <%= rootPath({"special/":"12=ss"}) %>
 			12. <%= resourcePath({resource_id: 1}) %>
 			13. <%= editResourcePath({resource_id: 1}) %>
+			14. <%= testPath() %>
+			15. <%= testNamePath({name: "myTest"}) %>
+			16. <%= paganoPath({id: 1}) %>
 		`))
 	}
 
@@ -439,11 +440,14 @@ func Test_App_NamedRoutes(t *testing.T) {
 	a.GET("/peeps", sampleHandler).Name("myPeeps")
 	a.Resource("/car", carsResource)
 	a.Resource("/resources", resourcesResource)
+	a.GET("/test", sampleHandler)
+	a.GET("/test/{name}", sampleHandler)
+	a.GET("/pagano/{id}", sampleHandler)
 
 	w := httptest.New(a)
 	res := w.HTML("/").Get()
 
-	r.Equal(200, res.Code)
+	r.Equal(http.StatusOK, res.Code)
 	r.Contains(res.Body.String(), "1. /")
 	r.Contains(res.Body.String(), "2. /users/1")
 	r.Contains(res.Body.String(), "3. /peeps")
@@ -456,6 +460,9 @@ func Test_App_NamedRoutes(t *testing.T) {
 	r.Contains(res.Body.String(), "11. /?special%2F=12%3Dss")
 	r.Contains(res.Body.String(), "12. /resources/1")
 	r.Contains(res.Body.String(), "13. /resources/1/edit")
+	r.Contains(res.Body.String(), "14. /test")
+	r.Contains(res.Body.String(), "15. /test/myTest")
+	r.Contains(res.Body.String(), "16. /pagano/1")
 }
 
 func Test_App_NamedRoutes_MissingParameter(t *testing.T) {
@@ -463,14 +470,14 @@ func Test_App_NamedRoutes_MissingParameter(t *testing.T) {
 	a := New(Options{})
 
 	rr := render.New(render.Options{
-		HTMLLayout:   "application.html",
+		HTMLLayout:   "application.plush.html",
 		TemplatesBox: packr.New("../templates", "../templates"),
 		Helpers:      map[string]interface{}{},
 	})
 
 	sampleHandler := func(c Context) error {
 		c.Set("opts", map[string]interface{}{})
-		return c.Render(200, rr.String(`
+		return c.Render(http.StatusOK, rr.String(`
 			<%= userPath(opts) %>
 		`))
 	}
@@ -479,7 +486,7 @@ func Test_App_NamedRoutes_MissingParameter(t *testing.T) {
 	w := httptest.New(a)
 	res := w.HTML("/users/1").Get()
 
-	r.Equal(500, res.Code)
+	r.Equal(http.StatusInternalServerError, res.Code)
 	r.Contains(res.Body.String(), "missing parameters for /users/{user_id}")
 }
 
@@ -574,34 +581,74 @@ func Test_Resource_ParamKey(t *testing.T) {
 	r.Contains(paths, "/foo/{bazKey}/edit/")
 }
 
+type mwResource struct {
+	WebResource
+}
+
+func (mwResource) Use() []MiddlewareFunc {
+	var mw []MiddlewareFunc
+
+	mw = append(mw, func(next Handler) Handler {
+		return func(c Context) error {
+			if c.Param("good") == "" {
+				return fmt.Errorf("not good")
+			}
+			return next(c)
+		}
+	})
+
+	return mw
+}
+
+func (m mwResource) List(c Context) error {
+	return c.Render(http.StatusOK, render.String("southern harmony and the musical companion"))
+}
+
+func Test_Resource_MW(t *testing.T) {
+	r := require.New(t)
+	fr := mwResource{}
+	a := New(Options{})
+	a.Resource("/foo", fr)
+
+	w := httptest.New(a)
+	res := w.HTML("/foo?good=true").Get()
+	r.Equal(http.StatusOK, res.Code)
+	r.Contains(res.Body.String(), "southern harmony")
+
+	res = w.HTML("/foo").Get()
+	r.Equal(http.StatusInternalServerError, res.Code)
+
+	r.NotContains(res.Body.String(), "southern harmony")
+}
+
 type userResource struct{}
 
 func (u *userResource) List(c Context) error {
-	return c.Render(200, render.String("list"))
+	return c.Render(http.StatusOK, render.String("list"))
 }
 
 func (u *userResource) Show(c Context) error {
-	return c.Render(200, render.String(`show <%=params["user_id"] %>`))
+	return c.Render(http.StatusOK, render.String(`show <%=params["user_id"] %>`))
 }
 
 func (u *userResource) New(c Context) error {
-	return c.Render(200, render.String("new"))
+	return c.Render(http.StatusOK, render.String("new"))
 }
 
 func (u *userResource) Create(c Context) error {
-	return c.Render(200, render.String("create"))
+	return c.Render(http.StatusOK, render.String("create"))
 }
 
 func (u *userResource) Edit(c Context) error {
-	return c.Render(200, render.String(`edit <%=params["user_id"] %>`))
+	return c.Render(http.StatusOK, render.String(`edit <%=params["user_id"] %>`))
 }
 
 func (u *userResource) Update(c Context) error {
-	return c.Render(200, render.String(`update <%=params["user_id"] %>`))
+	return c.Render(http.StatusOK, render.String(`update <%=params["user_id"] %>`))
 }
 
 func (u *userResource) Destroy(c Context) error {
-	return c.Render(200, render.String(`destroy <%=params["user_id"] %>`))
+	return c.Render(http.StatusOK, render.String(`destroy <%=params["user_id"] %>`))
 }
 
 func Test_ResourceOnResource(t *testing.T) {
@@ -681,9 +728,13 @@ func Test_buildRouteName(t *testing.T) {
 		"/users/{user_id}/children/{child_id}": "userChild",
 		"/users/{user_id}/children/new":        "newUserChildren",
 		"/users/{user_id}/children/{child_id}/build": "userChildBuild",
-		"/admin/planes":                 "adminPlanes",
-		"/admin/planes/{plane_id}":      "adminPlane",
-		"/admin/planes/{plane_id}/edit": "editAdminPlane",
+		"/admin/planes":                         "adminPlanes",
+		"/admin/planes/{plane_id}":              "adminPlane",
+		"/admin/planes/{plane_id}/edit":         "editAdminPlane",
+		"/test":                                 "test",
+		"/tests/{name}":                         "testName",
+		"/tests/{name_id}/cases/{case_id}":      "testNameIdCase",
+		"/tests/{name_id}/cases/{case_id}/edit": "editTestNameIdCase",
 	}
 
 	a := New(Options{})
@@ -712,7 +763,7 @@ func Test_CatchAll_Route(t *testing.T) {
 	a := New(Options{})
 	a.GET("/{name:.+}", func(c Context) error {
 		name := c.Param("name")
-		return c.Render(200, rr.String(name))
+		return c.Render(http.StatusOK, rr.String(name))
 	})
 
 	w := httptest.New(a)
@@ -754,13 +805,13 @@ func Test_Router_Matches_Trailing_Slash(t *testing.T) {
 				},
 			})
 			app.GET(tt.mapped, func(c Context) error {
-				return c.Render(200, render.String(c.Request().URL.Path))
+				return c.Render(http.StatusOK, render.String(c.Request().URL.Path))
 			})
 
 			w := httptest.New(app)
 			res := w.HTML(tt.browser).Get()
 
-			r.Equal(200, res.Code)
+			r.Equal(http.StatusOK, res.Code)
 			r.Equal(tt.expected, res.Body.String())
 		})
 	}

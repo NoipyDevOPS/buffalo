@@ -16,10 +16,11 @@ package x
 
 import (
 	"log"
+	"net/http"
 
 	"github.com/gobuffalo/buffalo/render"
 	"github.com/gobuffalo/envy"
-	"github.com/gobuffalo/packr"
+	"github.com/gobuffalo/packr/v2"
 	"github.com/gobuffalo/plush"
 	"github.com/gobuffalo/buffalo/mail"
 	"errors"
@@ -46,7 +47,7 @@ func init() {
 
 	//The rendering engine, this is usually generated inside actions/render.go in your buffalo app.
 	r = render.New(render.Options{
-		TemplatesBox:   packr.NewBox("../templates"),
+		TemplatesBox:   packr.New("app:mail", "../templates"),
 	})
 }
 
@@ -93,7 +94,7 @@ func ContactFormHandler(c buffalo.Context) error {
 
     //Calling to send the message
     SendContactMessage(contact)
-    return c.Redirect(302, "contact/thanks")
+    return c.Redirect(http.StatusFound, "contact/thanks")
 }
 ...
 ```

@@ -1,10 +1,9 @@
 package mail
 
 import (
+	"fmt"
 	"io"
 	"strconv"
-
-	"errors"
 
 	gomail "github.com/gobuffalo/buffalo/mail/internal/mail"
 )
@@ -16,6 +15,25 @@ type SMTPSender struct {
 
 //Send a message using SMTP configuration or returns an error if something goes wrong.
 func (sm SMTPSender) Send(message Message) error {
+	return sm.Dialer.DialAndSend(sm.prepareMessage(message))
+}
+
+// SendBatch of message with one connection, returns general error or errors specific for each message
+func (sm SMTPSender) SendBatch(messages ...Message) (errorsByMessages []error, generalError error) {
+	preparedMessages := make([]*gomail.Message, len(messages))
+	for i, message := range messages {
+		preparedMessages[i] = sm.prepareMessage(message)
+	}
+
+	s, err := sm.Dialer.Dial()
+	if err != nil {
+		return nil, err
+	}
+	defer s.Close()
+
+	return gomail.Send(s, preparedMessages...), nil
+}
+func (sm SMTPSender) prepareMessage(message Message) *gomail.Message {
 	gm := gomail.NewMessage()
 
 	gm.SetHeader("From", message.From)
@@ -31,13 +49,7 @@ func (sm SMTPSender) Send(message Message) error {
 		gm.SetHeader(field, value)
 	}
 
-	err := sm.Dialer.DialAndSend(gm)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return gm
 }
 
 func (sm SMTPSender) addBodies(message Message, gm *gomail.Message) {
@@ -77,7 +89,7 @@ func NewSMTPSender(host string, port string, user string, password string) (SMTP
 	iport, err := strconv.Atoi(port)
 
 	if err != nil {
-		return SMTPSender{}, errors.New("invalid port for the SMTP mail")
+		return SMTPSender{}, fmt.Errorf("invalid port for the SMTP mail")
 	}
 
 	dialer := &gomail.Dialer{

@@ -1,7 +1,10 @@
 package render
 
 import (
-	"github.com/gobuffalo/plush"
+	"github.com/gobuffalo/helpers"
+	"github.com/gobuffalo/helpers/forms"
+	"github.com/gobuffalo/helpers/forms/bootstrap"
+	"github.com/gobuffalo/plush/v4"
 )
 
 // Engine used to power all defined renderers.
@@ -16,7 +19,11 @@ type Engine struct {
 // and some defaults we think you might like.
 func New(opts Options) *Engine {
 	if opts.Helpers == nil {
-		opts.Helpers = map[string]interface{}{}
+		opts.Helpers = Helpers{}
+	}
+
+	if len(opts.Helpers) == 0 {
+		opts.Helpers = defaultHelpers()
 	}
 
 	if opts.TemplateEngines == nil {
@@ -24,6 +31,9 @@ func New(opts Options) *Engine {
 	}
 	if _, ok := opts.TemplateEngines["html"]; !ok {
 		opts.TemplateEngines["html"] = plush.BuffaloRenderer
+	}
+	if _, ok := opts.TemplateEngines["plush"]; !ok {
+		opts.TemplateEngines["plush"] = plush.BuffaloRenderer
 	}
 	if _, ok := opts.TemplateEngines["text"]; !ok {
 		opts.TemplateEngines["text"] = plush.BuffaloRenderer
@@ -49,4 +59,12 @@ func New(opts Options) *Engine {
 		Options: opts,
 	}
 	return e
+}
+
+func defaultHelpers() Helpers {
+	h := Helpers(helpers.ALL())
+	h[forms.FormKey] = bootstrap.Form
+	h[forms.FormForKey] = bootstrap.FormFor
+	h["form_for"] = bootstrap.FormFor
+	return h
 }

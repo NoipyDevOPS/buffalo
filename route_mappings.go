@@ -13,6 +13,7 @@ import (
 	"github.com/gobuffalo/envy"
 	"github.com/gobuffalo/flect"
 	"github.com/gobuffalo/flect/name"
+	"github.com/gorilla/handlers"
 )
 
 const (
@@ -99,11 +100,11 @@ func (a *App) ServeFiles(p string, root http.FileSystem) {
 
 func (a *App) fileServer(fs http.FileSystem) http.Handler {
 	fsh := http.FileServer(fs)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f, err := fs.Open(path.Clean(r.URL.Path))
 		if os.IsNotExist(err) {
-			eh := a.ErrorHandlers.Get(404)
-			eh(404, fmt.Errorf("could not find %s", r.URL.Path), a.newContext(RouteInfo{}, w, r))
+			eh := a.ErrorHandlers.Get(http.StatusNotFound)
+			eh(http.StatusNotFound, fmt.Errorf("could not find %s", r.URL.Path), a.newContext(RouteInfo{}, w, r))
 			return
 		}
 
@@ -113,6 +114,12 @@ func (a *App) fileServer(fs http.FileSystem) http.Handler {
 		w.Header().Add("Cache-Control", fmt.Sprintf("max-age=%s", maxAge))
 		fsh.ServeHTTP(w, r)
 	})
+
+	if a.CompressFiles {
+		return handlers.CompressHandler(baseHandler)
+	}
+
+	return baseHandler
 }
 
 type newable interface {
@@ -143,8 +150,12 @@ type editable interface {
 	g.DELETE("/{user_id}", ur.Destroy) DELETE /users/{user_id} => ur.Destroy
 */
 func (a *App) Resource(p string, r Resource) *App {
-
 	g := a.Group(p)
+
+	if mw, ok := r.(Middler); ok {
+		g.Use(mw.Use()...)
+	}
+
 	p = "/"
 
 	rv := reflect.ValueOf(r)
@@ -153,7 +164,8 @@ func (a *App) Resource(p string, r Resource) *App {
 	}
 
 	rt := rv.Type()
-	rname := fmt.Sprintf("%s.%s", rt.PkgPath(), rt.Name()) + ".%s"
+	resourceName := rt.Name()
+	handlerName := fmt.Sprintf("%s.%s", rt.PkgPath(), resourceName) + ".%s"
 
 	n := strings.TrimSuffix(rt.Name(), "Resource")
 	paramName := name.New(n).ParamID().String()
@@ -167,29 +179,34 @@ func (a *App) Resource(p string, r Resource) *App {
 	}
 
 	spath := path.Join(p, "{"+paramName+"}")
-	setFuncKey(r.List, fmt.Sprintf(rname, "List"))
-	g.GET(p, r.List)
+
+	setFuncKey(r.List, fmt.Sprintf(handlerName, "List"))
+	g.GET(p, r.List).ResourceName = resourceName
 
 	if n, ok := r.(newable); ok {
-		setFuncKey(n.New, fmt.Sprintf(rname, "New"))
-		g.GET(path.Join(p, "new"), n.New)
+		setFuncKey(n.New, fmt.Sprintf(handlerName, "New"))
+		g.GET(path.Join(p, "new"), n.New).ResourceName = resourceName
 	}
 
-	setFuncKey(r.Show, fmt.Sprintf(rname, "Show"))
-	g.GET(path.Join(spath), r.Show)
+	setFuncKey(r.Show, fmt.Sprintf(handlerName, "Show"))
+	g.GET(path.Join(spath), r.Show).ResourceName = resourceName
 
 	if n, ok := r.(editable); ok {
-		setFuncKey(n.Edit, fmt.Sprintf(rname, "Edit"))
-		g.GET(path.Join(spath, "edit"), n.Edit)
+		setFuncKey(n.Edit, fmt.Sprintf(handlerName, "Edit"))
+		g.GET(path.Join(spath, "edit"), n.Edit).ResourceName = resourceName
 	}
 
-	setFuncKey(r.Create, fmt.Sprintf(rname, "Create"))
-	g.POST(p, r.Create)
-	setFuncKey(r.Update, fmt.Sprintf(rname, "Update"))
-	g.PUT(path.Join(spath), r.Update)
-	setFuncKey(r.Destroy, fmt.Sprintf(rname, "Destroy"))
-	g.DELETE(path.Join(spath), r.Destroy)
+	setFuncKey(r.Create, fmt.Sprintf(handlerName, "Create"))
+	g.POST(p, r.Create).ResourceName = resourceName
+
+	setFuncKey(r.Update, fmt.Sprintf(handlerName, "Update"))
+	g.PUT(path.Join(spath), r.Update).ResourceName = resourceName
+
+	setFuncKey(r.Destroy, fmt.Sprintf(handlerName, "Destroy"))
+	g.DELETE(path.Join(spath), r.Destroy).ResourceName = resourceName
+
 	g.Prefix = path.Join(g.Prefix, spath)
+
 	return g
 }
 
@@ -285,21 +302,35 @@ func (a *App) buildRouteName(p string) string {
 
 	for index, part := range parts {
 
-		if strings.Contains(part, "{") || part == "" {
+		originalPart := parts[index]
+
+		var previousPart string
+		if index > 0 {
+			previousPart = parts[index-1]
+		}
+
+		var nextPart string
+		if len(parts) > index+1 {
+			nextPart = parts[index+1]
+		}
+
+		isIdentifierPart := strings.Contains(part, "{") && (strings.Contains(part, flect.Singularize(previousPart)))
+		isSimplifiedID := part == `{id}`
+
+		if isIdentifierPart || isSimplifiedID || part == "" {
 			continue
 		}
 
-		shouldSingularize := (len(parts) > index+1) && strings.Contains(parts[index+1], "{")
-		if shouldSingularize {
+		if strings.Contains(nextPart, "{") {
 			part = flect.Singularize(part)
 		}
 
-		if parts[index] == "new" || parts[index] == "edit" {
+		if originalPart == "new" || originalPart == "edit" {
 			resultParts = append([]string{part}, resultParts...)
 			continue
 		}
 
-		if index > 0 && strings.Contains(parts[index-1], "}") {
+		if strings.Contains(previousPart, "}") {
 			resultParts = append(resultParts, part)
 			continue
 		}
@@ -327,8 +358,8 @@ func stripAsset(path string, h http.Handler, a *App) http.Handler {
 
 		u, err := url.Parse(up)
 		if err != nil {
-			eh := a.ErrorHandlers.Get(400)
-			eh(400, err, a.newContext(RouteInfo{}, w, r))
+			eh := a.ErrorHandlers.Get(http.StatusBadRequest)
+			eh(http.StatusBadRequest, err, a.newContext(RouteInfo{}, w, r))
 			return
 		}
 

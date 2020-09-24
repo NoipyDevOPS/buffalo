@@ -2,19 +2,18 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"errors"
-
 	"github.com/gobuffalo/envy"
 	"github.com/gobuffalo/meta"
 	"github.com/sirupsen/logrus"
 
-	"github.com/gobuffalo/pop"
+	"github.com/gobuffalo/pop/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -47,7 +46,9 @@ var testCmd = &cobra.Command{
 				return err
 			}
 
+			// Read and remove --force-migrations flag from args:
 			forceMigrations = strings.Contains(strings.Join(args, ""), "--force-migrations")
+			args = cutArg("--force-migrations", args)
 			if forceMigrations {
 				fm, err := pop.NewFileMigrator("./migrations", test)
 
@@ -100,38 +101,43 @@ func findSchema() io.Reader {
 func testRunner(args []string) error {
 	var mFlag bool
 	var query string
-	cargs := []string{}
-	pargs := []string{}
 
-	var larg string
-	for i, a := range args {
-		switch a {
+	commandArgs := []string{}
+	packageArgs := []string{}
+
+	var lastArg string
+	for index, arg := range args {
+		switch arg {
 		case "-run", "-m":
-			query = args[i+1]
+			query = args[index+1]
 			mFlag = true
-		case "-v":
-			cargs = append(cargs, "-v")
+		case "-v", "-timeout":
+			commandArgs = append(commandArgs, arg)
 		default:
-			if larg != "-run" && larg != "-m" {
-				pargs = append(pargs, a)
+			if lastArg == "-timeout" {
+				commandArgs = append(commandArgs, arg)
+			} else if lastArg != "-run" && lastArg != "-m" {
+				packageArgs = append(packageArgs, arg)
 			}
 		}
-		larg = a
+
+		lastArg = arg
 	}
 
-	cmd := newTestCmd(cargs)
+	cmd := newTestCmd(commandArgs)
 	if mFlag {
 		return mFlagRunner{
 			query: query,
-			args:  cargs,
-			pargs: pargs,
+			args:  commandArgs,
+			pargs: packageArgs,
 		}.Run()
 	}
 
-	pkgs, err := testPackages(pargs)
+	pkgs, err := testPackages(packageArgs)
 	if err != nil {
 		return err
 	}
+
 	cmd.Args = append(cmd.Args, pkgs...)
 	logrus.Info(strings.Join(cmd.Args, " "))
 	return cmd.Run()
@@ -152,12 +158,15 @@ func (m mFlagRunner) Run() error {
 	if err != nil {
 		return err
 	}
+
 	var errs bool
 	for _, p := range pkgs {
 		os.Chdir(pwd)
+
 		if p == app.PackagePkg {
 			continue
 		}
+
 		p = strings.TrimPrefix(p, app.PackagePkg+string(filepath.Separator))
 		os.Chdir(p)
 
@@ -167,13 +176,15 @@ func (m mFlagRunner) Run() error {
 		} else {
 			cmd.Args = append(cmd.Args, "-run", m.query)
 		}
+
 		logrus.Info(strings.Join(cmd.Args, " "))
+
 		if err := cmd.Run(); err != nil {
 			errs = true
 		}
 	}
 	if errs {
-		return errors.New("errors running tests")
+		return fmt.Errorf("errors running tests")
 	}
 	return nil
 }
@@ -192,6 +203,7 @@ func testPackages(givenArgs []string) ([]string, error) {
 	if len(givenArgs) > 0 {
 		return givenArgs, nil
 	}
+
 	args := []string{}
 	out, err := exec.Command(envy.Get("GO_BIN", "go"), "list", "./...").Output()
 	if err != nil {
@@ -216,4 +228,14 @@ func newTestCmd(args []string) *exec.Cmd {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd
+}
+
+func cutArg(arg string, args []string) []string {
+	for i, v := range args {
+		if v == arg {
+			return append(args[:i], args[i+1:]...)
+		}
+	}
+
+	return args
 }

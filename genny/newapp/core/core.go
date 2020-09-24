@@ -1,19 +1,15 @@
 package core
 
 import (
-	"github.com/gobuffalo/buffalo-docker/genny/docker"
-	"github.com/gobuffalo/buffalo-plugins/genny/install"
-	"github.com/gobuffalo/buffalo-plugins/plugins/plugdeps"
-	pop "github.com/gobuffalo/buffalo-pop/genny/newapp"
+	pop "github.com/gobuffalo/buffalo-pop/v2/genny/newapp"
 	"github.com/gobuffalo/buffalo/genny/ci"
+	"github.com/gobuffalo/buffalo/genny/docker"
+	"github.com/gobuffalo/buffalo/genny/plugins/install"
 	"github.com/gobuffalo/buffalo/genny/refresh"
-	"github.com/gobuffalo/buffalo/runtime"
-	"github.com/gobuffalo/depgen"
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/gogen"
-	"github.com/gobuffalo/gogen/gomods"
+	"github.com/gobuffalo/buffalo/internal/takeon/github.com/markbates/errx"
+	"github.com/gobuffalo/buffalo/plugins/plugdeps"
+	"github.com/gobuffalo/genny/v2"
 	"github.com/gobuffalo/meta"
-	"github.com/pkg/errors"
 )
 
 // New generator for creating a Buffalo application
@@ -29,19 +25,8 @@ func New(opts *Options) (*genny.Group, error) {
 
 	app := opts.App
 
-	if app.WithModules {
-		g, err := gomods.Init(app.PackagePkg, app.Root)
-		if err != nil {
-			return gg, err
-		}
-		g.Command(gogen.Get("github.com/gobuffalo/buffalo@" + runtime.Version))
-		g.Command(gogen.Get("./..."))
-
-		gg.Add(g)
-	}
-
 	plugs, err := plugdeps.List(app)
-	if err != nil && (errors.Cause(err) != plugdeps.ErrMissingConfig) {
+	if err != nil && (errx.Unwrap(err) != plugdeps.ErrMissingConfig) {
 		return nil, err
 	}
 
@@ -65,7 +50,7 @@ func New(opts *Options) (*genny.Group, error) {
 		// add the plugin
 		plugs.Add(plugdeps.Plugin{
 			Binary: "buffalo-pop",
-			GoGet:  "github.com/gobuffalo/buffalo-pop",
+			GoGet:  "github.com/gobuffalo/buffalo-pop/v2",
 		})
 	}
 
@@ -102,30 +87,6 @@ func New(opts *Options) (*genny.Group, error) {
 		return gg, err
 	}
 	gg.Merge(ig)
-
-	// DEP/MODS/go get should be last
-	if app.WithDep {
-		// init dep
-		di, err := depgen.Init("", false)
-		if err != nil {
-			return gg, err
-		}
-		gg.Add(di)
-	}
-
-	if !app.WithDep && !app.WithModules {
-		g := genny.New()
-		g.Command(gogen.Get("./...", "-t"))
-		gg.Add(g)
-	}
-
-	if app.WithModules {
-		g, err := gomods.Tidy(app.Root, false)
-		if err != nil {
-			return gg, err
-		}
-		gg.Add(g)
-	}
 
 	return gg, nil
 }

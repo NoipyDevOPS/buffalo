@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -8,8 +9,8 @@ import (
 
 	"github.com/gobuffalo/attrs"
 	"github.com/gobuffalo/flect/name"
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/genny/gentest"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gentest"
 	"github.com/gobuffalo/meta"
 	packr "github.com/gobuffalo/packr/v2"
 	"github.com/stretchr/testify/require"
@@ -68,12 +69,12 @@ func Test_New(t *testing.T) {
 			nn := name.New(tt.Options.Name).Pluralize().String()
 			actions := []string{"_form", "index", "show", "new", "edit"}
 			for _, s := range actions {
-				p := path.Join("templates", nn, s+".html")
+				p := path.Join("templates", nn, s+".plush.html")
 				_, err = res.Find(p)
 				r.NoError(err)
 			}
 
-			exp := packr.New(tt.Name, filepath.Join("_fixtures", tt.Name))
+			exp := packr.Folder(filepath.Join("_fixtures", tt.Name))
 			gentest.CompareFiles(exp.List(), res.Files)
 
 			for _, n := range exp.List() {
@@ -210,7 +211,7 @@ func Test_New_UseModel(t *testing.T) {
 	r.Len(res.Files, 9)
 
 	for _, s := range []string{"_form", "edit", "index", "new", "show"} {
-		p := path.Join("templates", "widgets", s+".html")
+		p := path.Join("templates", "widgets", s+".plush.html")
 		_, err = res.Find(p)
 		r.NoError(err)
 	}
@@ -218,5 +219,38 @@ func Test_New_UseModel(t *testing.T) {
 	f, err := res.Find("actions/widgets.go")
 	r.NoError(err)
 	r.Contains(f.String(), "users := &models.Users{}")
+
+}
+
+func Test_New_SkipModel(t *testing.T) {
+	r := require.New(t)
+
+	app := meta.New(".")
+	app.PackageRoot("github.com/markbates/coke")
+
+	opts := &Options{
+		App:       app,
+		Name:      "Widget",
+		SkipModel: true,
+	}
+
+	g, err := New(opts)
+	r.NoError(err)
+
+	run := runner()
+	run.With(g)
+	r.NoError(run.Run())
+
+	res := run.Results()
+
+	r.Len(res.Commands, 0)
+	r.Len(res.Files, 9)
+
+	f, err := res.Find("actions/widgets.go")
+	r.NoError(err)
+	actions := []string{"List", "Show", "Create", "Update", "Destroy", "New", "Edit"}
+	for _, action := range actions {
+		r.Contains(f.String(), fmt.Sprintf("func (v WidgetsResource) %v(c buffalo.Context) error {", action))
+	}
 
 }

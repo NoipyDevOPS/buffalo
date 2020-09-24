@@ -2,15 +2,15 @@ package build
 
 import (
 	"bytes"
-	"context"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/gobuffalo/buffalo/genny/assets/webpack"
 	"github.com/gobuffalo/envy"
-	"github.com/gobuffalo/genny"
+	"github.com/gobuffalo/genny/v2"
 
-	pack "github.com/gobuffalo/packr/builder"
+	"github.com/gobuffalo/packr/v2/jam"
+	"github.com/gobuffalo/packr/v2/jam/parser"
 )
 
 func assets(opts *Options) (*genny.Generator, error) {
@@ -20,7 +20,7 @@ func assets(opts *Options) (*genny.Generator, error) {
 		return g, err
 	}
 
-	if opts.App.WithWebpack {
+	if opts.App.WithNodeJs || opts.App.WithWebpack {
 		if opts.CleanAssets {
 			g.RunFn(func(r *genny.Runner) error {
 				r.Delete(filepath.Join(opts.App.Root, "public", "assets"))
@@ -32,29 +32,45 @@ func assets(opts *Options) (*genny.Generator, error) {
 			return envy.MustSet("NODE_ENV", opts.Environment)
 		})
 		g.RunFn(func(r *genny.Runner) error {
+			tool := "yarnpkg"
+			if !opts.App.WithYarn {
+				tool = "npm"
+			}
+
+			c := exec.CommandContext(r.Context, tool, "run", "build")
+			if _, err := opts.App.NodeScript("build"); err != nil {
+				// Fallback on legacy runner
+				c = exec.CommandContext(r.Context, webpack.BinPath)
+			}
+
 			bb := &bytes.Buffer{}
-			c := exec.Command(webpack.BinPath)
 			c.Stdout = bb
 			c.Stderr = bb
+
 			if err := r.Exec(c); err != nil {
 				r.Logger.Error(bb.String())
 				return err
 			}
 			return nil
+
 		})
 	}
 
-	p := pack.New(context.Background(), opts.App.Root)
-	p.Compress = true
+	g.RunFn(func(r *genny.Runner) error {
+		ro := &parser.RootsOptions{}
 
-	if !opts.WithAssets {
-		p.IgnoredBoxes = append(p.IgnoredBoxes, "../public/assets")
-	} else {
-		p.IgnoredFolders = p.IgnoredFolders[1:]
-	}
+		if !opts.WithAssets {
+			ro.Ignores = append(ro.Ignores, "public/assets")
+		}
+
+		opts := jam.PackOptions{
+			Roots:        []string{opts.App.Root},
+			RootsOptions: ro,
+		}
+		return jam.Pack(opts)
+	})
 
 	if opts.ExtractAssets && opts.WithAssets {
-		p.IgnoredBoxes = append(p.IgnoredBoxes, "../public/assets")
 		// mount the archived assets generator
 		aa, err := archivedAssets(opts)
 		if err != nil {
@@ -62,10 +78,6 @@ func assets(opts *Options) (*genny.Generator, error) {
 		}
 		g.Merge(aa)
 	}
-
-	g.RunFn(func(r *genny.Runner) error {
-		return p.Run()
-	})
 
 	return g, nil
 }

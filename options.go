@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/gobuffalo/buffalo/internal/defaults"
 	"github.com/gobuffalo/buffalo/worker"
 	"github.com/gobuffalo/envy"
 	"github.com/gobuffalo/logger"
-	"github.com/gobuffalo/pop"
-	"github.com/gobuffalo/pop/logging"
-	"github.com/gobuffalo/x/defaults"
+	"github.com/gobuffalo/pop/v5"
+	"github.com/gobuffalo/pop/v5/logging"
 	"github.com/gorilla/sessions"
 	"github.com/markbates/oncer"
 )
@@ -61,6 +61,11 @@ type Options struct {
 	// and acts as a pseudo-middleware between the http.Server and
 	// a Buffalo application.
 	PreWares []PreWare `json:"-"`
+
+	// CompressFiles enables gzip compression of static files served by ServeFiles using
+	// gorilla's CompressHandler (https://godoc.org/github.com/gorilla/handlers#CompressHandler).
+	// Default is "false".
+	CompressFiles bool `json:"compress_files"`
 
 	Prefix  string          `json:"prefix"`
 	Context context.Context `json:"-"`
@@ -151,15 +156,25 @@ func optionsWithDefaults(opts Options) Options {
 
 	if opts.SessionStore == nil {
 		secret := envy.Get("SESSION_SECRET", "")
+
+		if secret == "" && (opts.Env == "development" || opts.Env == "test") {
+			secret = "buffalo-secret"
+		}
+
 		// In production a SESSION_SECRET must be set!
 		if secret == "" {
-			if opts.Env == "development" || opts.Env == "test" {
-				secret = "buffalo-secret"
-			} else {
-				opts.Logger.Warn("Unless you set SESSION_SECRET env variable, your session storage is not protected!")
-			}
+			opts.Logger.Warn("Unless you set SESSION_SECRET env variable, your session storage is not protected!")
 		}
-		opts.SessionStore = sessions.NewCookieStore([]byte(secret))
+
+		cookieStore := sessions.NewCookieStore([]byte(secret))
+
+		//Cookie secure attributes, see: https://www.owasp.org/index.php/Testing_for_cookies_attributes_(OTG-SESS-002)
+		cookieStore.Options.HttpOnly = true
+		if opts.Env == "production" {
+			cookieStore.Options.Secure = true
+		}
+
+		opts.SessionStore = cookieStore
 	}
 	if opts.Worker == nil {
 		w := worker.NewSimpleWithContext(opts.Context)

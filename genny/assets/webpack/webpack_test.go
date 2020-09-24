@@ -4,15 +4,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/genny/gentest"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gentest"
 	"github.com/gobuffalo/meta"
 	"github.com/stretchr/testify/require"
 )
 
 func runner() *genny.Runner {
 	run := gentest.NewRunner()
-	run.Disk.Add(genny.NewFileS("templates/application.html", layout))
+	run.Disk.Add(genny.NewFileS("templates/application.plush.html", layout))
 	run.LookPathFn = func(s string) (string, error) {
 		return s, nil
 	}
@@ -44,8 +44,9 @@ func Test_Webpack_New(t *testing.T) {
 		"assets/images/logo.svg",
 		"assets/js/application.js",
 		"package.json",
+		"postcss.config.js",
 		"public/assets/.keep",
-		"templates/application.html",
+		"templates/application.plush.html",
 		"webpack.config.js",
 	}
 	r.Len(res.Files, len(files))
@@ -73,7 +74,7 @@ func Test_Webpack_New_WithYarn(t *testing.T) {
 
 	res := run.Results()
 	r.Len(res.Commands, 1)
-	r.Len(res.Files, 10)
+	r.Len(res.Files, 11)
 
 	c := res.Commands[0]
 	r.Equal("yarnpkg install --no-progress --save", strings.Join(c.Args, " "))

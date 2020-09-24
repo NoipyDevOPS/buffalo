@@ -3,13 +3,14 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/gobuffalo/buffalo/genny/build"
-	"github.com/gobuffalo/genny"
+	"github.com/gobuffalo/genny/v2"
 	"github.com/gobuffalo/logger"
 	"github.com/gobuffalo/meta"
 	"github.com/markbates/sigtx"
@@ -19,6 +20,7 @@ import (
 var buildOptions = struct {
 	*build.Options
 	SkipAssets             bool
+	SkipBuildDeps          bool
 	Debug                  bool
 	Tags                   string
 	SkipTemplateValidation bool
@@ -39,7 +41,10 @@ var xbuildCmd = &cobra.Command{
 		ctx, cancel := sigtx.WithCancel(context.Background(), os.Interrupt)
 		defer cancel()
 
-		pwd, _ := os.Getwd()
+		pwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
 
 		buildOptions.App = meta.New(pwd)
 		if len(buildOptions.bin) > 0 {
@@ -47,6 +52,7 @@ var xbuildCmd = &cobra.Command{
 		}
 
 		buildOptions.Options.WithAssets = !buildOptions.SkipAssets
+		buildOptions.Options.WithBuildDeps = !buildOptions.SkipBuildDeps
 
 		run := genny.WetRunner(ctx)
 		if buildOptions.DryRun {
@@ -75,8 +81,15 @@ var xbuildCmd = &cobra.Command{
 			opts.GoCommand = "install"
 		}
 		clean := build.Cleanup(opts)
-		defer clean(run)
-		run.WithNew(build.New(opts))
+		// defer clean(run)
+		defer func() {
+			if err := clean(run); err != nil {
+				log.Fatal("build:clean", err)
+			}
+		}()
+		if err := run.WithNew(build.New(opts)); err != nil {
+			return err
+		}
 		return run.Run()
 	},
 }
@@ -88,6 +101,7 @@ func init() {
 	xbuildCmd.Flags().StringVarP(&buildOptions.Tags, "tags", "t", "", "compile with specific build tags")
 	xbuildCmd.Flags().BoolVarP(&buildOptions.ExtractAssets, "extract-assets", "e", false, "extract the assets and put them in a distinct archive")
 	xbuildCmd.Flags().BoolVarP(&buildOptions.SkipAssets, "skip-assets", "k", false, "skip running webpack and building assets")
+	xbuildCmd.Flags().BoolVarP(&buildOptions.SkipBuildDeps, "skip-build-deps", "", false, "skip building dependencies")
 	xbuildCmd.Flags().BoolVarP(&buildOptions.Static, "static", "s", false, "build a static binary using  --ldflags '-linkmode external -extldflags \"-static\"'")
 	xbuildCmd.Flags().StringVar(&buildOptions.LDFlags, "ldflags", "", "set any ldflags to be passed to the go build")
 	xbuildCmd.Flags().BoolVarP(&buildOptions.Verbose, "verbose", "v", false, "print debugging information")

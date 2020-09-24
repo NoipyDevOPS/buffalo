@@ -4,8 +4,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/gobuffalo/genny"
-	"github.com/gobuffalo/gogen"
+	"github.com/gobuffalo/genny/v2"
+	"github.com/gobuffalo/genny/v2/gogen"
 	"github.com/gobuffalo/packr/v2"
 )
 
@@ -20,7 +20,7 @@ func New(opts *Options) (*genny.Generator, error) {
 	g.Transformer(t)
 
 	g.RunFn(func(r *genny.Runner) error {
-		f, err := r.FindFile("templates/application.html")
+		f, err := r.FindFile("templates/application.plush.html")
 		if err != nil {
 			return err
 		}
